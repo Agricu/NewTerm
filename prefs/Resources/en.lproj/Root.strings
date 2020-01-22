@@ -23,11 +23,29 @@
 	<key>SAMPLE</key>
 	<string>Sample</string>
 
+	<key>KEYBOARD_STYLE</key>
+	<string>Key Style</string>
+
+	<key>KEYBOARD_STYLE_TEXT</key>
+	<string>Text (Ctrl, Esc, Tab)</string>
+
+	<key>KEYBOARD_STYLE_TEXT_SHORT</key>
+	<string>Text</string>
+
+	<key>KEYBOARD_STYLE_ICONS</key>
+	<string>Icons (⌃, ⎋, ⇥)</string>
+
+	<key>KEYBOARD_STYLE_ICONS_SHORT</key>
+	<string>Icons</string>
+
 	<key>BELL</key>
 	<string>Bell</string>
 
 	<key>BELL_HUD</key>
 	<string>HUD</string>
+
+	<key>BELL_VIBRATE</key>
+	<string>Vibrate</string>
 
 	<key>BELL_SOUND</key>
 	<string>Sound</string>
