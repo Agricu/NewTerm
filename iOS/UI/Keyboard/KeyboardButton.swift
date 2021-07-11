@@ -21,9 +21,9 @@ class KeyboardButton: UIButton {
 		accessibilityLabel = title
 		self.glyph = glyph
 
-		if #available(iOS 13.0, *), systemImage != nil {
+		if let systemImage = systemImage {
 			let configuration = UIImage.SymbolConfiguration(pointSize: titleLabel!.font.pointSize * 1.2, weight: .regular, scale: .default)
-			self.image = UIImage(systemName: systemImage!, withConfiguration: configuration)
+			self.image = UIImage(systemName: systemImage, withConfiguration: configuration)
 			self.highlightedImage = systemHighlightedImage == nil ? nil : UIImage(systemName: systemHighlightedImage!, withConfiguration: configuration)
 		} else {
 			self.image = image
@@ -41,14 +41,14 @@ class KeyboardButton: UIButton {
 		clipsToBounds = true
 		layer.cornerRadius = isBigDevice ? 6 : 4
 		titleLabel!.font = .systemFont(ofSize: isBigDevice ? 18 : 15)
-		tintColor = .white
+		updateTintColor()
 		adjustsImageWhenHighlighted = false
 		setTitleColor(tintColor, for: .normal)
 		setTitleColor(.black, for: .selected)
-		setBackgroundImage(image(of: UIColor(white: 1, alpha: 69 / 255)), for: .normal)
-		setBackgroundImage(image(of: UIColor(white: 1, alpha: 32 / 255)), for: .highlighted)
-		setBackgroundImage(image(of: UIColor(white: 1, alpha: 182 / 255)), for: .selected)
-		setBackgroundImage(image(of: UIColor(white: 1, alpha: 32 / 255)), for: [ .highlighted, .selected ])
+		setBackgroundImage(image(of: .keyBackgroundNormal), for: .normal)
+		setBackgroundImage(image(of: .keyBackgroundHighlighted), for: .highlighted)
+		setBackgroundImage(image(of: .keyBackgroundSelected), for: .selected)
+		setBackgroundImage(image(of: .keyBackgroundHighlighted), for: [ .highlighted, .selected ])
 
 		addTarget(UIDevice.current, action: #selector(UIDevice.playInputClick), for: .touchUpInside)
 	}
@@ -62,8 +62,8 @@ class KeyboardButton: UIButton {
 			let actualNormalImage: UIImage?
 			let actualHighlightedImage: UIImage?
 			if image != nil && (glyph == nil || style == .icons) {
-				actualNormalImage = image!.withRenderingMode(.alwaysTemplate)
-				actualHighlightedImage = highlightedImage?.withRenderingMode(.alwaysTemplate)
+				actualNormalImage = image!
+				actualHighlightedImage = highlightedImage
 				setTitle(nil, for: .normal)
 			} else {
 				actualNormalImage = nil
@@ -76,6 +76,16 @@ class KeyboardButton: UIButton {
 		}
 	}
 
+	private func updateTintColor() {
+		if isHighlighted {
+			tintColor = .keyForegroundHighlighted
+		} else if isSelected {
+			tintColor = .keyForegroundSelected
+		} else {
+			tintColor = .keyForegroundNormal
+		}
+	}
+
 	override var intrinsicContentSize: CGSize {
 		var size = super.intrinsicContentSize
 		size.width += 16
@@ -84,15 +94,11 @@ class KeyboardButton: UIButton {
 	}
 
 	override var isSelected: Bool {
-		didSet {
-			tintColor = isSelected && !isHighlighted ? .black : .white
-		}
+		didSet { updateTintColor() }
 	}
 
 	override var isHighlighted: Bool {
-		didSet {
-			tintColor = isSelected && !isHighlighted ? .black : .white
-		}
+		didSet { updateTintColor() }
 	}
 
 	private func image(of color: UIColor) -> UIImage {

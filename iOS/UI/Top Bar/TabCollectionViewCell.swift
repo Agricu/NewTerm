@@ -28,50 +28,45 @@ class TabCollectionViewCell: UICollectionViewCell {
 		super.init(frame: frame)
 
 		selectedBackgroundView = UIView()
-		selectedBackgroundView!.backgroundColor = UIColor(white: 1, alpha: 69 / 255)
+		selectedBackgroundView!.backgroundColor = .tabSelected
 
 		textLabel.translatesAutoresizingMaskIntoConstraints = false
-		textLabel.font = UIFont.systemFont(ofSize: 16)
-		textLabel.textColor = .white
+		textLabel.font = UIFont.systemFont(ofSize: 12, weight: .semibold)
+		textLabel.textColor = .label
 		textLabel.textAlignment = .center
 		contentView.addSubview(textLabel)
 
 		closeButton.translatesAutoresizingMaskIntoConstraints = false
-		if #available(iOS 13.0, *) {
-			let configuration = UIImage.SymbolConfiguration(pointSize: textLabel.font.pointSize * 0.9, weight: .light, scale: .medium)
-			closeButton.setImage(UIImage(systemName: "xmark.circle.fill", withConfiguration: configuration), for: .normal)
-		} else {
-			closeButton.setImage(#imageLiteral(resourceName: "cross").withRenderingMode(.alwaysTemplate), for: .normal)
-		}
+		let configuration = UIImage.SymbolConfiguration(pointSize: textLabel.font.pointSize * 1.12, weight: .unspecified, scale: .unspecified)
+		closeButton.setImage(UIImage(systemName: "xmark.square.fill", withConfiguration: configuration), for: .normal)
 		closeButton.accessibilityLabel = NSLocalizedString("CLOSE_TAB", comment: "VoiceOver label for the close tab button.")
 		closeButton.contentMode = .center
-		closeButton.tintColor = .white
+		closeButton.tintColor = textLabel.textColor
 		closeButton.alpha = 0.5
 		contentView.addSubview(closeButton)
 
 		separatorView.translatesAutoresizingMaskIntoConstraints = false
-		separatorView.backgroundColor = UIColor(white: 85 / 255, alpha: 0.4)
+		separatorView.backgroundColor = .tabSeparator
 		contentView.addSubview(separatorView)
 
-		contentView.addCompactConstraints([
-			"textLabel.centerY = contentView.centerY",
-			"textLabel.left = contentView.left + 6",
-			"closeButton.width = 30",
-			"closeButton.height = contentView.height",
-			"closeButton.left = textLabel.right",
-			"closeButton.right = contentView.right",
-			"separatorView.top = contentView.top",
-			"separatorView.bottom = contentView.bottom",
-			"separatorView.right = contentView.right"
-		], metrics: nil, views: [
-			"contentView": contentView,
-			"textLabel": textLabel,
-			"closeButton": closeButton,
-			"separatorView": separatorView
-		])
-
 		separatorViewWidthConstraint = separatorView.widthAnchor.constraint(equalToConstant: 1)
-		separatorViewWidthConstraint.isActive = true
+
+		NSLayoutConstraint.activate([
+			closeButton.topAnchor.constraint(equalTo: contentView.topAnchor),
+			closeButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+			closeButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+			closeButton.widthAnchor.constraint(equalToConstant: 32),
+
+			textLabel.topAnchor.constraint(equalTo: contentView.topAnchor),
+			textLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+			textLabel.leadingAnchor.constraint(equalTo: closeButton.trailingAnchor, constant: -2),
+			textLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -10),
+
+			separatorView.topAnchor.constraint(equalTo: contentView.topAnchor),
+			separatorView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+			separatorView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+			separatorViewWidthConstraint
+		])
 	}
 
 	required init?(coder aDecoder: NSCoder) {

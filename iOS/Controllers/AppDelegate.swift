@@ -12,54 +12,111 @@ import UIKit
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
-	var window: UIWindow?
-
 	func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-		let tintColor = UIColor(red: 76 / 255, green: 161 / 255, blue: 1, alpha: 1)
-
-		if #available(iOS 13.0, *) {
-			// no need for any of this. yay!
-		} else {
-			let textColor = UIColor.white
-			let backgroundColor = UIColor(white: 26 / 255, alpha: 1)
-			let lightTintColor = UIColor(white: 60 / 255, alpha: 1)
-
-			UINavigationBar.appearance().barStyle = .black
-			UIToolbar.appearance().barStyle = .black
-
-			UITableView.appearance().backgroundColor = backgroundColor
-			UITableViewCell.appearance().backgroundColor = backgroundColor
-
-			UINavigationBar.appearance().titleTextAttributes = [
-				.foregroundColor: textColor
-			]
-
-			UITextField.appearance().textColor = textColor
-			UITextField.appearance().keyboardAppearance = .dark
-			UITableView.appearance().separatorColor = lightTintColor
-		}
-
 		UIScrollView.appearance().keyboardDismissMode = .interactive
 
-		if #available(iOS 13.0, *) {
-			// handled by UISceneSession lifecycle methods below
-		} else {
-			window = UIWindow(frame: UIScreen.main.bounds)
-			window!.tintColor = tintColor
-			window!.rootViewController = UINavigationController(rootViewController: RootViewController())
-			window!.makeKeyAndVisible()
-		}
-
+		FontMetrics.loadFonts()
 		_ = Preferences.shared
+
+		UpdateCheckManager.check(updateAvailableCompletion: { response in
+			if let scene = application.connectedScenes.first {
+				let delegate = scene.delegate as! TerminalSceneDelegate
+				delegate.handleUpdateAvailable(response)
+			}
+		})
 
 		return true
 	}
 
 	// MARK: - UISceneSession Lifecycle
 
-	@available(iOS 13.0, *)
 	func application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession, options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+		if let userActivity = options.userActivities.first {
+			if userActivity.activityType == SettingsSceneDelegate.activityType {
+				return UISceneConfiguration(name: "Settings", sessionRole: connectingSceneSession.role)
+			}
+		}
 		return UISceneConfiguration(name: "Terminal", sessionRole: connectingSceneSession.role)
+	}
+
+	// MARK: - Catalyst
+
+	override func buildMenu(with builder: UIMenuBuilder) {
+		super.buildMenu(with: builder)
+
+		// Remove Edit menu text editing items
+		builder.remove(menu: .spelling)
+		builder.remove(menu: .substitutions)
+		builder.remove(menu: .transformations)
+		builder.remove(menu: .speech)
+
+		// Remove Format menu
+		builder.remove(menu: .format)
+
+		// Remove View menu toolbar items
+		builder.remove(menu: .toolbar)
+
+		// Application menu
+		builder.insertSibling(UIMenu(options: .displayInline,
+																 children: [
+																	UIKeyCommand(title: NSLocalizedString("SETTINGS_MAC", comment: "Title of Settings page on macOS (where Settings is usually named Preferences)."),
+																							 action: #selector(RootViewController.openSettings),
+																							 input: ",",
+																							 modifierFlags: .command)
+																 ]),
+													afterMenu: .about)
+
+		// File menu
+		builder.replace(menu: .newScene,
+										with: UIMenu(options: .displayInline,
+																 children: [
+																	UIKeyCommand(title: NSLocalizedString("NEW_WINDOW", comment: "VoiceOver label for the new window button."),
+																							 action: #selector(RootViewController.addWindow),
+																							 input: "n",
+																							 modifierFlags: .command),
+																	UIKeyCommand(title: NSLocalizedString("NEW_TAB", comment: "VoiceOver label for the new tab button."),
+																							 action: #selector(RootViewController.newTab),
+																							 input: "t",
+																							 modifierFlags: .command)
+																 ]))
+
+		builder.replace(menu: .close,
+										with: UIMenu(options: .displayInline,
+																 children: [
+																	// TODO: Disabling for now, needs research.
+																	// Probably need to directly access the NSWindow to do this.
+//																	UIKeyCommand(title: NSLocalizedString("CLOSE_WINDOW", comment: "VoiceOver label for the close window button."),
+//																							 action: #selector(RootViewController.closeCurrentWindow),
+//																							 input: "w",
+//																							 modifierFlags: [ .command, .shift ]),
+																	UIKeyCommand(title: NSLocalizedString("CLOSE_TAB", comment: "VoiceOver label for the close tab button."),
+																							 action: #selector(RootViewController.removeCurrentTerminal),
+																							 input: "w",
+																							 modifierFlags: .command)
+																 ]))
+
+		builder.insertChild(UIMenu(options: .displayInline,
+															 children: [
+																UIKeyCommand(title: NSLocalizedString("SPLIT_HORIZONTALLY", comment: ""),
+																						 action: #selector(RootViewController.splitHorizontally),
+																						 input: "d",
+																						 modifierFlags: [.command, .shift]),
+																UIKeyCommand(title: NSLocalizedString("SPLIT_VERTICALLY", comment: ""),
+																						 action: #selector(RootViewController.splitVertically),
+																						 input: "d",
+																						 modifierFlags: .command)
+															 ]),
+												atEndOfMenu: .file)
+
+		// Edit menu
+		builder.insertSibling(UIMenu(options: .displayInline,
+																 children: [
+																	UIKeyCommand(title: NSLocalizedString("CLEAR_TERMINAL", comment: "VoiceOver label for a button that clears the terminal."),
+																							 action: #selector(TerminalSessionViewController.clearTerminal),
+																							 input: "k",
+																							 modifierFlags: .command)
+																 ]),
+													afterMenu: .standardEdit)
 	}
 
 }

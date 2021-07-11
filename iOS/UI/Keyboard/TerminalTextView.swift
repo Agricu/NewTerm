@@ -14,13 +14,13 @@ class TerminalTextView: UITextView {
 		super.init(frame: frame, textContainer: textContainer)
 
 		backgroundColor = .black
-		indicatorStyle = .white
 		showsHorizontalScrollIndicator = false
 		alwaysBounceVertical = true
 		dataDetectorTypes = [] // none
 		isEditable = false
 		textContainerInset = UIEdgeInsets()
 		self.textContainer.lineFragmentPadding = 0
+		self.textContainer.lineBreakMode = .byClipping
 
 		linkTextAttributes = [
 			.underlineStyle: NSUnderlineStyle.single
@@ -29,20 +29,6 @@ class TerminalTextView: UITextView {
 
 	required init?(coder aDecoder: NSCoder) {
 		fatalError("init(coder:) has not been implemented")
-	}
-
-	// MARK: - UIResponder
-
-	override func becomeFirstResponder() -> Bool {
-		// we aren’t meant to ever become first responder. that’s the job of TerminalKeyInput
-		return false
-	}
-
-	// MARK: - UITextInput
-
-	override func caretRect(for position: UITextPosition) -> CGRect {
-		// TODO: should we take advantage of this?
-		return .zero
 	}
 
 }

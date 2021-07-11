@@ -10,7 +10,7 @@ import UIKit
 
 class TerminalKeyInput: TextInputBase {
 
-	var terminalInputDelegate: TerminalInputProtocol?
+	weak var terminalInputDelegate: TerminalInputProtocol?
 	weak var textView: UITextView! {
 		didSet {
 			textView.frame = bounds
@@ -21,35 +21,29 @@ class TerminalKeyInput: TextInputBase {
 
 	private var toolbar: KeyboardToolbar?
 
-	private let ctrlKey = KeyboardButton(title: "Control", glyph: "Ctrl", systemImage: "control", image: #imageLiteral(resourceName: "key-control"))
-	private let metaKey = KeyboardButton(title: "Escape", glyph: "Esc", systemImage: "escape", image: #imageLiteral(resourceName: "key-escape"))
-	private let tabKey = KeyboardButton(title: "Tab", glyph: "Tab", systemImage: "arrow.right.to.line", image: #imageLiteral(resourceName: "key-tab"))
-	private let moreKey = KeyboardButton(title: "Functions", glyph: "Fn", systemImage: "ellipsis", image: #imageLiteral(resourceName: "key-more"))
+	private let ctrlKey  = KeyboardButton(title: "Control",   glyph: "Ctrl", systemImage: "control")
+	private let metaKey  = KeyboardButton(title: "Escape",    glyph: "Esc",  systemImage: "escape")
+	private let tabKey   = KeyboardButton(title: "Tab",       glyph: "Tab",  systemImage: "arrow.right.to.line")
+	private let moreKey  = KeyboardButton(title: "Functions", systemImage: "ellipsis")
 
-	private let upKey = KeyboardButton(title: "Up", systemImage: "arrowtriangle.up", systemHighlightedImage: "arrowtriangle.up.fill", image: #imageLiteral(resourceName: "key-up"), highlightedImage: #imageLiteral(resourceName: "key-up-down"))
-	private let downKey = KeyboardButton(title: "Down", systemImage: "arrowtriangle.down", systemHighlightedImage: "arrowtriangle.down.fill", image: #imageLiteral(resourceName: "key-down"), highlightedImage: #imageLiteral(resourceName: "key-down-down"))
-	private let leftKey = KeyboardButton(title: "Left", systemImage: "arrowtriangle.left", systemHighlightedImage: "arrowtriangle.left.fill", image: #imageLiteral(resourceName: "key-left"), highlightedImage: #imageLiteral(resourceName: "key-left-down"))
-	private let rightKey = KeyboardButton(title: "Right", systemImage: "arrowtriangle.right", systemHighlightedImage: "arrowtriangle.right.fill", image: #imageLiteral(resourceName: "key-right"), highlightedImage: #imageLiteral(resourceName: "key-right-down"))
+	private let upKey    = KeyboardButton(title: "Up",    systemImage: "arrow.up")
+	private let downKey  = KeyboardButton(title: "Down",  systemImage: "arrow.down")
+	private let leftKey  = KeyboardButton(title: "Left",  systemImage: "arrow.left")
+	private let rightKey = KeyboardButton(title: "Right", systemImage: "arrow.right")
 
-	private var longPressTimer: Timer?
 	private var buttons: [KeyboardButton]!
 	private var squareButtonConstraints: [NSLayoutConstraint]!
 	private var moreToolbar = KeyboardPopupToolbar(frame: .zero)
+	private var moreToolbarBottomConstraint: NSLayoutConstraint!
+	private var passwordInputView: TerminalPasswordInputView?
 
 	private var ctrlDown = false
+	private var previousFloatingCursorPoint: CGPoint? = nil
+	private var longPressTimer: Timer?
+	private var hardwareRepeatTimer: Timer?
 
-	private let backspaceData = Data([0x7F]) // \x7F
-	private let metaKeyData = Data([0x1B]) // \e
-	private let tabKeyData = Data([0x09]) // \t
-	private let upKeyData = Data([0x1B, 0x5B, 0x41]) // \e[A
-	private let downKeyData = Data([0x1B, 0x5B, 0x42]) // \e[B
-	private let leftKeyData = Data([0x1B, 0x5B, 0x44]) // \e[D
-	private let rightKeyData = Data([0x1B, 0x5B, 0x43]) // \e[C
-	private let homeKeyData = Data([0x1B, 0x5B, 0x48]) // \e[H
-	private let endKeyData = Data([0x1B, 0x5B, 0x46]) // \e[F
-	private let pageUpKeyData = Data([0x1B, 0x5B, 0x35, 0x7E]) // \e[5~
-	private let pageDownKeyData = Data([0x1B, 0x5B, 0x36, 0x7E]) // \e[6~
-	private let deleteKeyData = Data([0x1B, 0x5B, 0x33, 0x7E]) // \e[3~
+	// Should be [UIKey], but I can’t use @available(iOS 13.4, *) on a property
+	private var pressedKeys = [Any]()
 
 	override init(frame: CGRect) {
 		super.init(frame: frame)
@@ -57,18 +51,9 @@ class TerminalKeyInput: TextInputBase {
 		autocapitalizationType = .none
 		autocorrectionType = .no
 		spellCheckingType = .no
-
-		if #available(iOS 11.0, *) {
-			smartQuotesType = .no
-			smartDashesType = .no
-			smartInsertDeleteType = .no
-		}
-
-		if #available(iOS 13.0, *) {
-		} else {
-			// TODO: this should be themable
-			keyboardAppearance = .dark
-		}
+		smartQuotesType = .no
+		smartDashesType = .no
+		smartInsertDeleteType = .no
 
 		buttons = [
 			ctrlKey, metaKey, tabKey, moreKey,
@@ -141,63 +126,44 @@ class TerminalKeyInput: TextInputBase {
 			toolbar!.setUp()
 		}
 
-		setMoreRowVisible(false, animated: false)
-		addSubview(moreToolbar)
+		ctrlKey.addTarget(self,  action: #selector(self.ctrlKeyPressed), for: .touchUpInside)
+		metaKey.addTarget(self,  action: #selector(self.inputKeyPressed), for: .touchUpInside)
+		tabKey.addTarget(self,   action: #selector(self.inputKeyPressed), for: .touchUpInside)
+		moreKey.addTarget(self,  action: #selector(self.moreKeyPressed), for: .touchUpInside)
+		upKey.addTarget(self,    action: #selector(self.arrowKeyPressed), for: .touchUpInside)
+		downKey.addTarget(self,  action: #selector(self.arrowKeyPressed), for: .touchUpInside)
+		leftKey.addTarget(self,  action: #selector(self.arrowKeyPressed), for: .touchUpInside)
+		rightKey.addTarget(self, action: #selector(self.arrowKeyPressed), for: .touchUpInside)
 
-		ctrlKey.addTarget(self, action: #selector(self.ctrlKeyPressed), for: .touchUpInside)
-		metaKey.addTarget(self, action: #selector(self.metaKeyPressed), for: .touchUpInside)
-		tabKey.addTarget(self, action: #selector(self.tabKeyPressed), for: .touchUpInside)
-		moreKey.addTarget(self, action: #selector(self.moreKeyPressed), for: .touchUpInside)
-		upKey.addTarget(self, action: #selector(self.upKeyPressed), for: .touchUpInside)
-		downKey.addTarget(self, action: #selector(self.downKeyPressed), for: .touchUpInside)
-		leftKey.addTarget(self, action: #selector(self.leftKeyPressed), for: .touchUpInside)
-		rightKey.addTarget(self, action: #selector(self.rightKeyPressed), for: .touchUpInside)
-
-		moreToolbar.homeKey.addTarget(self, action: #selector(self.homeKeyPressed), for: .touchUpInside)
-		moreToolbar.endKey.addTarget(self, action: #selector(self.endKeyPressed), for: .touchUpInside)
-		moreToolbar.pageUpKey.addTarget(self, action: #selector(self.pageUpKeyPressed), for: .touchUpInside)
-		moreToolbar.pageDownKey.addTarget(self, action: #selector(self.pageDownKeyPressed), for: .touchUpInside)
-		moreToolbar.deleteKey.addTarget(self, action: #selector(self.deleteKeyPressed), for: .touchUpInside)
-		moreToolbar.settingsKey.addTarget(self, action: #selector(self.settingsKeyPressed), for: .touchUpInside)
+		for key in moreToolbar.buttons {
+			key.addTarget(self, action: #selector(self.inputKeyPressed), for: .touchUpInside)
+		}
 
 		for key in [ upKey, downKey, leftKey, rightKey ] {
 			let gestureRecognizer = UILongPressGestureRecognizer(target: self, action: #selector(self.arrowKeyLongPressed(_:)))
 			key.addGestureRecognizer(gestureRecognizer)
 		}
 
-		let views: [String: UIView] = [
-			"ctrlKey": ctrlKey,
-			"metaKey": metaKey,
-			"tabKey": tabKey,
-			"moreKey": moreKey,
-			"upKey": upKey,
-			"downKey": downKey,
-			"leftKey": leftKey,
-			"rightKey": rightKey,
-		]
+		moreToolbarBottomConstraint = moreToolbar.bottomAnchor.constraint(equalTo: self.bottomAnchor)
 
-		NSLayoutConstraint.activate(NSLayoutConstraint.compactConstraints([
-			"ctrlKey.width >= metaKey.width",
-			"metaKey.width >= ctrlKey.width",
-			"metaKey.width >= tabKey.width",
-			"tabKey.width >= metaKey.width",
-			"tabKey.width >= moreKey.width",
-			"moreKey.width >= tabKey.width"
-		], metrics: nil, views: views, self: nil))
+		setMoreRowVisible(false, animated: false)
+		addSubview(moreToolbar)
 
-		NSLayoutConstraint.activate(NSLayoutConstraint.compactConstraints([
-			"upKey.width = upKey.height",
-			"downKey.width = downKey.height",
-			"leftKey.width = leftKey.height",
-			"rightKey.width = rightKey.height"
-		], metrics: nil, views: views, self: nil))
+		NSLayoutConstraint.activate([
+			moreToolbar.leadingAnchor.constraint(equalTo: self.leadingAnchor),
+			moreToolbar.trailingAnchor.constraint(equalTo: self.trailingAnchor),
+			moreToolbarBottomConstraint,
 
-		squareButtonConstraints = NSLayoutConstraint.compactConstraints([
-			"ctrlKey.width = ctrlKey.height",
-			"metaKey.width = metaKey.height",
-			"tabKey.width = tabKey.height",
-			"moreKey.width = moreKey.height"
-		], metrics: nil, views: views, self: self)
+			ctrlKey.widthAnchor.constraint(greaterThanOrEqualTo: metaKey.widthAnchor),
+			metaKey.widthAnchor.constraint(greaterThanOrEqualTo: ctrlKey.widthAnchor),
+			metaKey.widthAnchor.constraint(greaterThanOrEqualTo: tabKey.widthAnchor),
+			tabKey.widthAnchor.constraint(greaterThanOrEqualTo: metaKey.widthAnchor),
+			tabKey.widthAnchor.constraint(greaterThanOrEqualTo: moreKey.widthAnchor),
+			moreKey.widthAnchor.constraint(greaterThanOrEqualTo: tabKey.widthAnchor)
+		])
+
+		NSLayoutConstraint.activate([ upKey, downKey, leftKey, rightKey ].map { view in view.widthAnchor.constraint(equalTo: view.heightAnchor) })
+		squareButtonConstraints = [ ctrlKey, metaKey, tabKey, moreKey ].map { view in view.widthAnchor.constraint(equalTo: view.heightAnchor) }
 
 		NotificationCenter.default.addObserver(self, selector: #selector(self.preferencesUpdated), name: Preferences.didChangeNotification, object: nil)
 		preferencesUpdated()
@@ -219,15 +185,10 @@ class TerminalKeyInput: TextInputBase {
 			button.style = style
 		}
 
-		// enable 1:1 width:height aspect ratio if using icons style
+		// Enable 1:1 width:height aspect ratio if using icons style
 		switch style {
-			case .text:
-				NSLayoutConstraint.deactivate(squareButtonConstraints)
-				break
-
-			case .icons:
-				NSLayoutConstraint.activate(squareButtonConstraints)
-				break
+		case .text:  NSLayoutConstraint.deactivate(squareButtonConstraints)
+		case .icons: NSLayoutConstraint.activate(squareButtonConstraints)
 		}
 	}
 
@@ -245,81 +206,57 @@ class TerminalKeyInput: TextInputBase {
 		}
 	}
 
-	@objc func metaKeyPressed() {
-		terminalInputDelegate!.receiveKeyboardInput(data: metaKeyData)
+	@objc private func inputKeyPressed(_ sender: KeyboardButton) {
+		if let index = moreToolbar.fnKeys.firstIndex(of: sender) {
+			terminalInputDelegate!.receiveKeyboardInput(data: EscapeSequences.fn[index])
+			return
+		}
+
+		let keyValues: [KeyboardButton: Data] = [
+			metaKey:  EscapeSequences.meta,
+			tabKey:   EscapeSequences.tab,
+			moreToolbar.homeKey:     EscapeSequences.home,
+			moreToolbar.endKey:      EscapeSequences.end,
+			moreToolbar.pageUpKey:   EscapeSequences.pageUp,
+			moreToolbar.pageDownKey: EscapeSequences.pageDown,
+			moreToolbar.deleteKey:   EscapeSequences.delete
+		]
+		if let data = keyValues[sender] {
+			terminalInputDelegate!.receiveKeyboardInput(data: data)
+		}
 	}
 
-	@objc func tabKeyPressed() {
-		terminalInputDelegate!.receiveKeyboardInput(data: tabKeyData)
+	@objc private func arrowKeyPressed(_ sender: KeyboardButton) {
+		let keyValues: [KeyboardButton: Data] = [
+			upKey:    EscapeSequences.up,
+			downKey:  EscapeSequences.down,
+			leftKey:  EscapeSequences.left,
+			rightKey: EscapeSequences.right
+		]
+		let keyAppValues: [KeyboardButton: Data] = [
+			upKey:    EscapeSequences.upApp,
+			downKey:  EscapeSequences.downApp,
+			leftKey:  EscapeSequences.leftApp,
+			rightKey: EscapeSequences.rightApp
+		]
+		let values = terminalInputDelegate!.applicationCursor ? keyAppValues : keyValues
+		if let data = values[sender] {
+			terminalInputDelegate!.receiveKeyboardInput(data: data)
+		}
+	}
+
+	@objc private func arrowRepeatTimerFired(_ timer: Timer) {
+		arrowKeyPressed(timer.userInfo as! KeyboardButton)
 	}
 
 	@objc func moreKeyPressed() {
 		setMoreRowVisible(moreToolbar.isHidden, animated: true)
 	}
-
-	@objc func upKeyPressed() {
-		terminalInputDelegate!.receiveKeyboardInput(data: upKeyData)
-	}
-
-	@objc func downKeyPressed() {
-		terminalInputDelegate!.receiveKeyboardInput(data: downKeyData)
-	}
-
-	@objc func leftKeyPressed() {
-		terminalInputDelegate!.receiveKeyboardInput(data: leftKeyData)
-	}
-
-	@objc func rightKeyPressed() {
-		terminalInputDelegate!.receiveKeyboardInput(data: rightKeyData)
-	}
-
-	@objc func homeKeyPressed() {
-		terminalInputDelegate!.receiveKeyboardInput(data: homeKeyData)
-	}
-
-	@objc func endKeyPressed() {
-		terminalInputDelegate!.receiveKeyboardInput(data: endKeyData)
-	}
-
-	@objc func pageUpKeyPressed() {
-		terminalInputDelegate!.receiveKeyboardInput(data: pageUpKeyData)
-	}
-
-	@objc func pageDownKeyPressed() {
-		terminalInputDelegate!.receiveKeyboardInput(data: pageDownKeyData)
-	}
-
-	@objc func deleteKeyPressed() {
-		terminalInputDelegate!.receiveKeyboardInput(data: deleteKeyData)
-	}
-
-	@objc func settingsKeyPressed() {
-		terminalInputDelegate!.openSettings()
-	}
 	
 	@objc func arrowKeyLongPressed(_ sender: UILongPressGestureRecognizer) {
 		switch sender.state {
 		case .began:
-			switch sender.view! {
-			case upKey:
-				longPressTimer = Timer.scheduledTimer(timeInterval: 0.2, target: self, selector: #selector(upKeyPressed), userInfo: nil, repeats: true)
-				break
-
-			case downKey:
-				longPressTimer = Timer.scheduledTimer(timeInterval: 0.2, target: self, selector: #selector(downKeyPressed), userInfo: nil, repeats: true)
-				break
-
-			case leftKey:
-				longPressTimer = Timer.scheduledTimer(timeInterval: 0.1, target: self, selector: #selector(leftKeyPressed), userInfo: nil, repeats: true)
-				break
-
-			case rightKey:
-				longPressTimer = Timer.scheduledTimer(timeInterval: 0.1, target: self, selector: #selector(rightKeyPressed), userInfo: nil, repeats: true)
-				break
-
-			default:
-				break
-			}
+			longPressTimer = Timer.scheduledTimer(timeInterval: 0.1, target: self, selector: #selector(self.arrowRepeatTimerFired), userInfo: sender.view, repeats: true)
 			break
 
 		case .ended, .cancelled:
@@ -332,20 +269,27 @@ class TerminalKeyInput: TextInputBase {
 		}
 	}
 
-	// MARK: - More row
-
-	override func layoutSubviews() {
-		super.layoutSubviews()
-
-		let moreToolbarHeight = moreToolbar.intrinsicContentSize.height
-		let insets: UIEdgeInsets
-		if #available(iOS 13.0, *) {
-			insets = textView.verticalScrollIndicatorInsets
-		} else {
-			insets = textView.scrollIndicatorInsets
-		}
-		moreToolbar.frame = CGRect(x: 0, y: textView.frame.size.height - insets.bottom - moreToolbarHeight, width: textView.frame.size.width, height: moreToolbarHeight)
+	@objc func upKeyPressed() {
+		arrowKeyPressed(upKey)
 	}
+
+	@objc func downKeyPressed() {
+		arrowKeyPressed(downKey)
+	}
+
+	@objc func leftKeyPressed() {
+		arrowKeyPressed(leftKey)
+	}
+
+	@objc func rightKeyPressed() {
+		arrowKeyPressed(rightKey)
+	}
+
+	@objc func metaKeyPressed() {
+		inputKeyPressed(metaKey)
+	}
+
+	// MARK: - More row
 
 	func setMoreRowVisible(_ visible: Bool, animated: Bool = true) {
 		// if we’re already in the specified state, return
@@ -365,23 +309,31 @@ class TerminalKeyInput: TextInputBase {
 		} else {
 			moreToolbar.alpha = visible ? 1 : 0
 			moreToolbar.isHidden = !visible
+			moreToolbarBottomConstraint.constant = -(textView?.safeAreaInsets.bottom ?? 0)
+		}
+	}
+
+	// MARK: - Password manager
+
+	func activatePasswordManager() {
+		// Trigger the iOS password manager button, or cancel the operation.
+		if let passwordInputView = passwordInputView {
+			// We’ll become first responder automatically after removing the view.
+			passwordInputView.removeFromSuperview()
+		} else {
+			passwordInputView = TerminalPasswordInputView()
+			passwordInputView!.passwordDelegate = self
+			addSubview(passwordInputView!)
+			passwordInputView!.becomeFirstResponder()
 		}
 	}
 
 	// MARK: - UITextInput
 
-	override var textInputView: UIView {
-		// if we have the instance of the text view, return it here so stuff like selection hopefully
-		// works. if not, just return self for the moment
-		return textView ?? self
-	}
-
-	override func hasText() -> Bool {
-		// we always “have text”, even if we don’t
-		return true
-	}
+	override var hasText: Bool { true }
 
 	override func insertText(_ text: String) {
+		// Used by the software keyboard only. See pressesBegan(_:with:) below for hardware keyboard.
 		let input = text.data(using: .utf8)!
 		var data = Data()
 
@@ -389,18 +341,18 @@ class TerminalKeyInput: TextInputBase {
 			var newCharacter = character
 
 			if ctrlDown {
-				// translate capital to lowercase
+				// Translate capital to lowercase
 				if character >= 0x41 && character <= 0x5A { // >= 'A' <= 'Z'
 					newCharacter += 0x61 - 0x41 // 'a' - 'A'
 				}
 
-				// convert to the matching control character
+				// Convert to the matching control character
 				if character >= 0x61 && character <= 0x7A { // >= 'a' <= 'z'
 					newCharacter -= 0x61 - 1 // 'a' - 1
 				}
 			}
 
-			// convert newline to carriage return
+			// Convert newline to carriage return
 			if character == 0x0A {
 				newCharacter = 0x0D
 			}
@@ -421,14 +373,51 @@ class TerminalKeyInput: TextInputBase {
 	}
 
 	override func deleteBackward() {
-		terminalInputDelegate!.receiveKeyboardInput(data: backspaceData)
+		terminalInputDelegate!.receiveKeyboardInput(data: EscapeSequences.backspace)
+	}
+
+	func beginFloatingCursor(at point: CGPoint) {
+		previousFloatingCursorPoint = point
+	}
+
+	func updateFloatingCursor(at point: CGPoint) {
+		guard let oldPoint = previousFloatingCursorPoint else {
+			return
+		}
+
+		let threshold: CGFloat
+		switch Preferences.shared.keyboardTrackpadSensitivity {
+		case .off:    return
+		case .low:    threshold = 8
+		case .medium: threshold = 5
+		case .high:   threshold = 2
+		}
+
+		let difference = point.x - oldPoint.x
+		if abs(difference) < threshold {
+			return
+		}
+		if difference < 0 {
+			leftKeyPressed()
+		} else {
+			rightKeyPressed()
+		}
+		previousFloatingCursorPoint = point
+	}
+
+	func endFloatingCursor() {
+		previousFloatingCursorPoint = nil
 	}
 
 	// MARK: - UIResponder
 
 	override func becomeFirstResponder() -> Bool {
-		super.becomeFirstResponder()
-		return true
+		if let passwordInputView = passwordInputView {
+			return passwordInputView.becomeFirstResponder()
+		} else {
+			_ = super.becomeFirstResponder()
+			return true
+		}
 	}
 
 	override var canBecomeFirstResponder: Bool {
@@ -438,15 +427,14 @@ class TerminalKeyInput: TextInputBase {
 	override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
 		switch action {
 		case #selector(self.paste(_:)):
-			// only paste if the pasteboard contains a plaintext type
-			return UIPasteboard.general.contains(pasteboardTypes: UIPasteboard.typeListString as! [String])
+			// Only paste if the pasteboard contains a plaintext type
+			return UIPasteboard.general.hasStrings || UIPasteboard.general.hasURLs
 
 		case #selector(self.cut(_:)):
-			// ensure cut is never allowed
+			// Ensure cut is never allowed
 			return false
 
 		default:
-			// the rest are handled by super (which probably just returns false for everything…)
 			return super.canPerformAction(action, withSender: sender)
 		}
 	}
@@ -456,19 +444,207 @@ class TerminalKeyInput: TextInputBase {
 	}
 
 	override func paste(_ sender: Any?) {
-		let pasteboard = UIPasteboard.general
+		if let data = UIPasteboard.general.string?.data(using: .utf8) {
+			terminalInputDelegate!.receiveKeyboardInput(data: data)
+		}
+	}
 
-		// we already checked this above in canPerformAction(_:withSender:), but double check again
-		if !pasteboard.contains(pasteboardTypes: UIPasteboard.typeListString as! [String]) {
-			return
+	// MARK: - Hardware keyboard
+
+	@available(iOS 13.4, *)
+	@discardableResult
+	private func handleKey(_ key: UIKey) -> Bool {
+		// We don‘t want to handle cmd, let UIKit handle that.
+		if key.modifierFlags.contains(.command) {
+			return false
 		}
 
-		guard let string = pasteboard.string else {
-			// welp?
-			return
+		var keyData: Data
+		switch key.keyCode {
+		case .keyboardReturnOrEnter: keyData = EscapeSequences.return
+		case .keyboardEscape:        keyData = EscapeSequences.meta
+		case .keyboardDeleteOrBackspace: keyData = EscapeSequences.backspace
+		case .keyboardDeleteForward: keyData = EscapeSequences.delete
+
+		case .keyboardHome:
+			keyData = terminalInputDelegate!.applicationCursor ? EscapeSequences.homeApp : EscapeSequences.home
+
+		case .keyboardEnd:
+			keyData = terminalInputDelegate!.applicationCursor ? EscapeSequences.endApp : EscapeSequences.end
+
+		case .keyboardUpArrow:
+			keyData = terminalInputDelegate!.applicationCursor ? EscapeSequences.upApp : EscapeSequences.up
+
+		case .keyboardDownArrow:
+			keyData = terminalInputDelegate!.applicationCursor ? EscapeSequences.downApp : EscapeSequences.down
+
+		case .keyboardLeftArrow:
+			if key.modifierFlags.contains(.alternate) {
+				keyData = EscapeSequences.leftMeta
+			} else if terminalInputDelegate!.applicationCursor {
+				keyData = EscapeSequences.leftApp
+			} else {
+				keyData = EscapeSequences.left
+			}
+
+		case .keyboardRightArrow:
+			if key.modifierFlags.contains(.alternate) {
+				keyData = EscapeSequences.rightMeta
+			} else if terminalInputDelegate!.applicationCursor {
+				keyData = EscapeSequences.rightApp
+			} else {
+				keyData = EscapeSequences.right
+			}
+
+		case .keyboardPageUp:     keyData = EscapeSequences.pageUp
+		case .keyboardPageDown:   keyData = EscapeSequences.pageDown
+
+		case .keyboardF1:  keyData = EscapeSequences.fn[0]
+		case .keyboardF2:  keyData = EscapeSequences.fn[1]
+		case .keyboardF3:  keyData = EscapeSequences.fn[2]
+		case .keyboardF4:  keyData = EscapeSequences.fn[3]
+		case .keyboardF5:  keyData = EscapeSequences.fn[4]
+		case .keyboardF6:  keyData = EscapeSequences.fn[5]
+		case .keyboardF7:  keyData = EscapeSequences.fn[6]
+		case .keyboardF8:  keyData = EscapeSequences.fn[7]
+		case .keyboardF9:  keyData = EscapeSequences.fn[8]
+		case .keyboardF10: keyData = EscapeSequences.fn[9]
+		case .keyboardF11: keyData = EscapeSequences.fn[10]
+		case .keyboardF12: keyData = EscapeSequences.fn[11]
+
+		default:           keyData = key.characters.data(using: .utf8) ?? Data()
 		}
 
-		terminalInputDelegate!.receiveKeyboardInput(data: string.data(using: .utf8)!)
+		// If we didn’t get anything to type, nothing else to do here.
+		if keyData.isEmpty {
+			return false
+		}
+
+		// Translate ctrl key sequences to the approriate escape.
+		if key.modifierFlags.contains(.control) {
+			keyData = Data(keyData.map { character in EscapeSequences.asciiToControl(character) })
+		}
+
+		// Prepend esc before each byte if meta key is down.
+		if key.modifierFlags.contains(.alternate) {
+			keyData = Data(keyData.reduce([], { result, character in
+				return result + EscapeSequences.meta + [ character ]
+			}))
+		}
+
+		terminalInputDelegate?.receiveKeyboardInput(data: keyData)
+		return true
+	}
+
+	override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+		var isHandled = false
+		if #available(iOS 13.4, *) {
+			for press in presses {
+				if let key = press.key {
+					if handleKey(key) {
+						isHandled = true
+						pressedKeys.append(key)
+					}
+				}
+			}
+
+			if !pressedKeys.isEmpty && hardwareRepeatTimer == nil {
+				#if targetEnvironment(macCatalyst)
+				// If key repeat is disabled by the user, the initial repeat value will be set to a crazy
+				// high sentinel number.
+				let defaults = UserDefaults.standard
+				let keyRepeatEnabled = defaults.object(forKey: "InitialKeyRepeat") as? TimeInterval != 300000
+				#else
+				let defaults = UserDefaults(suiteName: "com.apple.Accessibility")
+				let keyRepeatEnabled = defaults?.object(forKey: "KeyRepeatEnabled") as? Bool ?? true
+				#endif
+
+				if keyRepeatEnabled {
+					#if targetEnvironment(macCatalyst)
+					// No idea what these key repeat preference values are meant to calculate out to, but
+					// this seems about right. Tested by counting frames in a screen recording.
+					let initialKeyRepeat = (UserDefaults.standard.object(forKey: "InitialKeyRepeat") as? TimeInterval ?? 84) * 0.012
+					#else
+					let initialKeyRepeat = defaults?.object(forKey: "KeyRepeatDelay") as? TimeInterval ?? 0.4
+					#endif
+
+					hardwareRepeatTimer = Timer.scheduledTimer(timeInterval: initialKeyRepeat,
+																										 target: self,
+																										 selector: #selector(self.handleHardwareKeyRepeat),
+																										 userInfo: true,
+																										 repeats: false)
+				}
+			}
+		}
+
+		if !isHandled {
+			super.pressesBegan(presses, with: event)
+		}
+	}
+
+	@available(iOS 13.4, *)
+	private func handlePressesEnded(_ presses: Set<UIPress>) {
+		let keys = presses.compactMap { item in item.key }
+		pressedKeys.removeAll(where: { item in keys.contains(item as! UIKey) })
+		if pressedKeys.isEmpty {
+			hardwareRepeatTimer?.invalidate()
+			hardwareRepeatTimer = nil
+		}
+	}
+
+	override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+		if #available(iOS 13.4, *) {
+			handlePressesEnded(presses)
+		}
+		super.pressesEnded(presses, with: event)
+	}
+
+	override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+		if #available(iOS 13.4, *) {
+			handlePressesEnded(presses)
+		}
+		super.pressesCancelled(presses, with: event)
+	}
+
+	@available(iOS 13.4, *)
+	@objc private func handleHardwareKeyRepeat(_ timer: Timer) {
+		for key in pressedKeys {
+			handleKey(key as! UIKey)
+		}
+		if timer.userInfo as? Bool ?? false {
+			#if targetEnvironment(macCatalyst)
+			let keyRepeat = (UserDefaults.standard.object(forKey: "KeyRepeat") as? TimeInterval ?? 8) * 0.012
+			#else
+			let keyRepeat = UserDefaults(suiteName: "com.apple.Accessibility")?.object(forKey: "KeyRepeatInterval") as? TimeInterval ?? 0.1
+			#endif
+			hardwareRepeatTimer = Timer.scheduledTimer(timeInterval: keyRepeat,
+																								 target: self,
+																								 selector: #selector(self.handleHardwareKeyRepeat),
+																								 userInfo: nil,
+																								 repeats: true)
+		}
+	}
+
+}
+
+extension TerminalKeyInput: TerminalPasswordInputViewDelegate {
+
+	func passwordInputViewDidComplete(password: String?) {
+		if let password = password {
+			// User could have typed on the keyboard while it was in password mode, rather than using the
+			// password autofill. Send a return if it seems like a password was actually received,
+			// otherwise just pretend it was typed like normal.
+			if password.count > 2,
+				 let data = password.data(using: .utf8) {
+				terminalInputDelegate!.receiveKeyboardInput(data: data)
+				terminalInputDelegate!.receiveKeyboardInput(data: EscapeSequences.return)
+			} else {
+				insertText(password)
+			}
+		}
+		passwordInputView?.removeFromSuperview()
+		passwordInputView = nil
+		_ = becomeFirstResponder()
 	}
 
 }

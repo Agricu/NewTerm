@@ -11,14 +11,7 @@ import UIKit
 class HUDView: UIView {
 
 	let imageView = UIImageView()
-
-	let backdropView: UIVisualEffectView = {
-		if #available(iOS 13.0, *) {
-			return UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterial))
-		} else {
-			return UIVisualEffectView(effect: UIBlurEffect(style: .dark))
-		}
-	}()
+	let backdropView = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterial))
 
 	init(image: UIImage) {
 		super.init(frame: .zero)
@@ -27,17 +20,23 @@ class HUDView: UIView {
 		alpha = 0
 		clipsToBounds = true
 		layer.cornerRadius = 16
-		tintColor = .white
+		layer.cornerCurve = .continuous
+		tintColor = .label
+		isUserInteractionEnabled = false
 
 		backdropView.frame = bounds
 		backdropView.autoresizingMask = [ .flexibleWidth, .flexibleHeight ]
 		addSubview(backdropView)
 
+		imageView.translatesAutoresizingMaskIntoConstraints = false
 		imageView.image = image
 		imageView.sizeToFit()
-		imageView.center = CGPoint(x: frame.size.width / 2, y: frame.size.height / 2)
-		imageView.autoresizingMask = [ .flexibleTopMargin, .flexibleRightMargin, .flexibleBottomMargin, .flexibleLeftMargin ]
 		addSubview(imageView)
+
+		NSLayoutConstraint.activate([
+			imageView.centerXAnchor.constraint(equalTo: self.centerXAnchor),
+			imageView.centerYAnchor.constraint(equalTo: self.centerYAnchor)
+		])
 	}
 
 	required init?(coder aDecoder: NSCoder) {
@@ -49,18 +48,21 @@ class HUDView: UIView {
 	}
 
 	func animate() {
-		// if our alpha is non-zero, we’re already visible. maybe we should extend the visible duration
-		// but eh. just do nothing
+		// If our alpha is non-zero, we’re already visible. Just ignore. We don’t extend the display
+		// timer here to avoid the HUD from being too annoying.
 		if alpha != 0 {
 			return
 		}
-
 		alpha = 1
 
-		// display for 1.5 secs, fade out in 0.3 secs, then remove from superview
-		UIView.animate(withDuration: 0.3, delay: 0.75, options: .init(), animations: {
-			self.alpha = 0
-		}, completion: nil)
+		// Display for 1.5 secs, fade out in 0.3 secs.
+		UIView.animate(withDuration: 0.3,
+									 delay: 0.75,
+									 options: [],
+									 animations: {
+										self.alpha = 0
+									 },
+									 completion: nil)
 	}
 
 }

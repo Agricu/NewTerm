@@ -10,8 +10,6 @@ import UIKit
 
 class KeyboardToolbar: UIView {
 
-	let backdropView = UIToolbar()
-
 	var ctrlKey: KeyboardButton!
 	var metaKey: KeyboardButton!
 	var tabKey: KeyboardButton!
@@ -23,16 +21,22 @@ class KeyboardToolbar: UIView {
 	var rightKey: KeyboardButton!
 
 	func setUp() {
+		let backdropView = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
 		backdropView.frame = bounds
 		backdropView.autoresizingMask = [ .flexibleWidth, .flexibleHeight ]
-		backdropView.delegate = self
 		addSubview(backdropView)
 
-		let height = isSmallDevice ? 36 : 44
+		let backdropColorView = UIView()
+		backdropColorView.frame = backdropView.contentView.bounds
+		backdropColorView.autoresizingMask = [ .flexibleWidth, .flexibleHeight ]
+		backdropColorView.backgroundColor = .keyboardToolbarBackground
+		backdropView.contentView.addSubview(backdropColorView)
+
+		let height = isSmallDevice ? 35 : 43
 		let outerXSpacing = CGFloat(3)
 		let xSpacing = CGFloat(6)
 		let topSpacing = CGFloat(isSmallDevice ? 2 : 4)
-		let bottomSpacing = CGFloat(2)
+		let bottomSpacing = CGFloat(1)
 
 		let spacerView = UIView()
 
@@ -47,19 +51,12 @@ class KeyboardToolbar: UIView {
 		stackView.spacing = xSpacing
 		addSubview(stackView)
 
-		let safeArea: String
-		if #available(iOS 11.0, *) {
-			safeArea = "safe"
-		} else {
-			safeArea = "toolbar"
-		}
-
 		addCompactConstraints([
 			"self.height = height",
 			"stackView.top = toolbar.top + topSpacing",
 			"stackView.bottom = toolbar.bottom - bottomSpacing",
-			"stackView.left = \(safeArea).left + outerXSpacing",
-			"stackView.right = \(safeArea).right - outerXSpacing"
+			"stackView.left = safe.left + outerXSpacing",
+			"stackView.right = safe.right - outerXSpacing"
 		], metrics: [
 			"height": height,
 			"outerXSpacing": outerXSpacing,
@@ -82,7 +79,7 @@ class KeyboardToolbar: UIView {
 extension KeyboardToolbar: UIToolbarDelegate {
 
 	func position(for bar: UIBarPositioning) -> UIBarPosition {
-		// helps UIToolbar figure out where to place the shadow line
+		// Helps UIToolbar figure out where to place the shadow line
 		return .bottom
 	}
 
@@ -91,7 +88,8 @@ extension KeyboardToolbar: UIToolbarDelegate {
 extension KeyboardToolbar: UIInputViewAudioFeedback {
 
 	var enableInputClicksWhenVisible: Bool {
-		// conforming to <UIInputViewAudioFeedback> allows the buttons to make the click sound when tapped
+		// Conforming to <UIInputViewAudioFeedback> allows the buttons to make the click sound
+		// when tapped
 		return true
 	}
 

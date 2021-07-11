@@ -12,155 +12,147 @@ import AppKit
 import UIKit
 #endif
 
-public enum KeyboardButtonStyle: Int {
-	case text = 0, icons = 1
+import SwiftUI
+import Combine
+import os.log
+
+public enum KeyboardButtonStyle: Int, PropertyListValue {
+	case text, icons
 }
 
-public class Preferences {
+public enum KeyboardTrackpadSensitivity: Int, PropertyListValue {
+	case off, low, medium, high
+}
+
+public class Preferences: NSObject, ObservableObject {
 
 	public static let didChangeNotification = Notification.Name(rawValue: "NewTermPreferencesDidChangeNotification")
 
 	public static let shared = Preferences()
 
-#if LINK_CEPHEI
-	let preferences = HBPreferences(identifier: "ws.hbang.Terminal")
-#else
-	let preferences = UserDefaults.standard
-#endif
+	public let objectWillChange = ObservableObjectPublisher()
 
-	let fontsPlist = NSDictionary(contentsOf: Bundle.main.url(forResource: "Fonts", withExtension: "plist")!)!
-	let themesPlist = NSDictionary(contentsOf: Bundle.main.url(forResource: "Themes", withExtension: "plist")!)!
+	private let themesPlist = NSDictionary(contentsOf: Bundle.main.url(forResource: "Themes", withExtension: "plist")!)!
 
-	public var fontMetrics: FontMetrics!
-	public var colorMap: VT100ColorMap!
+	@Published public var fontMetrics = FontMetrics(font: AppFont(), fontSize: 12)
+	@Published public var colorMap = ColorMap(theme: AppTheme())
 
-	private init() {
-		let defaultFontName: String
-		if #available(iOS 13.0, macOS 10.15, *) {
-			defaultFontName = "SF Mono"
-		} else {
-			defaultFontName = "Fira Code"
+	override init() {
+		super.init()
+
+		if let version = Bundle.main.infoDictionary!["CFBundleVersion"] as? String {
+			lastVersion = Int(version) ?? 0
 		}
 
-		preferences.register(defaults: [
-			"fontName": defaultFontName,
-			"fontSizePhone": 12,
-			"fontSizePad": 13,
-			"fontSizeMac": 12,
-			"theme": "kirb",
-			"bellHUD": true,
-			"bellVibrate": true,
-			"bellSound": false
-		])
-
-		// Fix the default font for users of NewTerm 2.2.1 on iOS 13
-		if #available(iOS 13.0, *), fontName == "Courier" && lastVersion == nil {
-			fontName = defaultFontName
-		}
-
-		let infoPlist = Bundle.main.infoDictionary!
-		lastVersion = infoPlist["CFBundleVersion"] as? Int
-
-		#if LINK_CEPHEI
-		NotificationCenter.default.addObserver(self, selector: #selector(self.preferencesUpdated(notification:)), name: HBPreferences.didChangeNotification, object: preferences)
-		#else
-		NotificationCenter.default.addObserver(self, selector: #selector(self.preferencesUpdated(notification:)), name: UserDefaults.didChangeNotification, object: preferences)
-		#endif
-
-		preferencesUpdated(notification: nil)
+		fontMetricsChanged()
+		colorMapChanged()
 	}
 
-	public var fontName: String {
-		get { return preferences.object(forKey: "fontName") as! String }
-		set { preferences.set(newValue, forKey: "fontName") }
+	@AppStorage("fontName")
+	public var fontName: String = "SF Mono" {
+		willSet { objectWillChange.send() }
+		didSet { fontMetricsChanged() }
 	}
 
-	public var fontSize: CGFloat {
+	// TODO: Public just for testing, make it private later
+	@AppStorage("fontSizePhone")
+	public var fontSizePhone: Double = 12 {
+		willSet { objectWillChange.send() }
+		didSet { fontMetricsChanged() }
+	}
+
+	@AppStorage("fontSizePad")
+	private var fontSizePad: Double = 13 {
+		willSet { objectWillChange.send() }
+		didSet { fontMetricsChanged() }
+	}
+
+	@AppStorage("fontSizeMac")
+	private var fontSizeMac: Double = 13 {
+		willSet { objectWillChange.send() }
+		didSet { fontMetricsChanged() }
+	}
+
+	// TODO: Make this act like a DynamicProperty
+	public var fontSize: Double {
 		get {
 			#if os(macOS)
-			return preferences.object(forKey: "fontSizeMac") as! CGFloat
+			return fontSizeMac
 			#else
-			return preferences.object(forKey: isBigDevice ? "fontSizePad" : "fontSizePhone") as! CGFloat
+			return isBigDevice ? fontSizePad : fontSizePhone
+			#endif
+		}
+		set {
+			#if os(macOS)
+			fontSizeMac = newValue
+			#else
+			if isBigDevice {
+				fontSizePad = newValue
+			} else {
+				fontSizePhone = newValue
+			}
 			#endif
 		}
 	}
 
-	public var themeName: String {
-		get { return preferences.object(forKey: "theme") as! String }
-		set { preferences.set(newValue, forKey: "theme") }
+	@AppStorage("themeName")
+	public var themeName: String = "kirb" {
+		willSet { objectWillChange.send() }
+		didSet { fontMetricsChanged() }
 	}
 
 	#if os(iOS)
-	public var keyboardAccessoryStyle: KeyboardButtonStyle {
-		get { return KeyboardButtonStyle(rawValue: preferences.integer(forKey: "keyboardAccessoryStyle")) ?? .text }
+	@AppStorage("keyboardAccessoryStyle")
+	public var keyboardAccessoryStyle: KeyboardButtonStyle = .text {
+		willSet { objectWillChange.send() }
+	}
+
+	@AppStorage("keyboardTrackpadSensitivity")
+	public var keyboardTrackpadSensitivity: KeyboardTrackpadSensitivity = .medium {
+		willSet { objectWillChange.send() }
 	}
 	#endif
 
-	public var bellHUD: Bool {
-		get { return preferences.bool(forKey: "bellHUD") }
+	@AppStorage("bellHUD")
+	public var bellHUD: Bool = true {
+		willSet { objectWillChange.send() }
 	}
 
-	public var bellVibrate: Bool {
-		get { return preferences.bool(forKey: "bellVibrate") }
+	@AppStorage("bellVibrate")
+	public var bellVibrate: Bool = true {
+		willSet { objectWillChange.send() }
 	}
 
-	public var bellSound: Bool {
-		get { return preferences.bool(forKey: "bellSound") }
+	@AppStorage("bellSound")
+	public var bellSound: Bool = true {
+		willSet { objectWillChange.send() }
 	}
 
-	public var lastVersion: Int? {
-		get { return preferences.object(forKey: "lastVersion") as? Int }
-		set { preferences.set(newValue, forKey: "lastVersion") }
+	@AppStorage("lastVersion")
+	public var lastVersion: Int = 0 {
+		willSet { objectWillChange.send() }
 	}
 
-	// MARK: - Callbacks
+	#if os(macOS)
+	public var appearanceStyle: NSAppearance.Name { colorMap.appearanceStyle }
+	#else
+	public var userInterfaceStyle: UIUserInterfaceStyle { colorMap.userInterfaceStyle }
+	#endif
 
-	@objc func preferencesUpdated(notification: Notification?) {
-		fontMetricsChanged()
-		colorMapChanged()
-
-		if notification != nil {
-			NotificationCenter.default.post(name: Preferences.didChangeNotification, object: nil)
-		}
-	}
+	// MARK: - Handlers
 
 	private func fontMetricsChanged() {
-		var regularFont: Font?
-		var boldFont: Font?
-
-		if fontName == "SF Mono" {
-			if #available(iOS 13.0, macOS 10.15, *) {
-				regularFont = Font.monospacedSystemFont(ofSize: fontSize, weight: .regular)
-				boldFont = Font.monospacedSystemFont(ofSize: fontSize, weight: .bold)
-			}
-		} else {
-			if let family = fontsPlist[fontName] as? [String: String] {
-				if family["Regular"] != nil && family["Bold"] != nil {
-					regularFont = Font(name: family["Regular"]!, size: fontSize)
-					boldFont = Font(name: family["Bold"]!, size: fontSize)
-				}
-			}
-		}
-
-		if regularFont == nil || boldFont == nil {
-			NSLog("font %@ size %f could not be initialised", fontName, fontSize)
-			fontName = "Courier"
-			return
-		}
-
-		fontMetrics = FontMetrics(regularFont: regularFont!, boldFont: boldFont!)
+		let font = AppFont.predefined[fontName] ?? AppFont()
+		fontMetrics = FontMetrics(font: font, fontSize: CGFloat(fontSize))
 	}
 
 	private func colorMapChanged() {
-		// if the theme doesn’t exist… how did we get here? force it to the default, which will call
-		// this method again
-		guard let theme = themesPlist[themeName] as? [String: Any] else {
-			NSLog("theme %@ doesn’t exist", themeName)
-			themeName = "kirb"
-			return
-		}
+		let theme = AppTheme.predefined[themeName] ?? AppTheme()
+		colorMap = ColorMap(theme: theme)
 
-		colorMap = VT100ColorMap(dictionary: theme)
+		#if os(macOS)
+		NSApp.appearance = NSAppearance(named: colorMap.appearanceStyle)
+		#endif
 	}
 
 }

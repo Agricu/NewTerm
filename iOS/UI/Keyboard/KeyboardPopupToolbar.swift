@@ -10,112 +10,110 @@ import UIKit
 
 class KeyboardPopupToolbar: UIView {
 
-	let backdropView = UIToolbar()
-
+	// TODO: Localise
 	let homeKey = KeyboardButton(title: "Home", glyph: "Home")
 	let endKey = KeyboardButton(title: "End", glyph: "End")
 	let pageUpKey = KeyboardButton(title: "Page Up", glyph: "PgUp")
 	let pageDownKey = KeyboardButton(title: "Page Down", glyph: "PgDn")
-	let deleteKey = KeyboardButton(title: "Delete Forward", systemImage: "delete.right", systemHighlightedImage: "delete.right.fill", image: #imageLiteral(resourceName: "key-delete-forward"), highlightedImage: #imageLiteral(resourceName: "key-delete-forward-down"))
-	let settingsKey = KeyboardButton(title: "Settings", systemImage: "gear", image: #imageLiteral(resourceName: "key-settings"))
+	let deleteKey = KeyboardButton(title: "Delete Forward", systemImage: "delete.right", systemHighlightedImage: "delete.right.fill")
+	let fnKeys: [KeyboardButton]!
 
-	var buttons: [KeyboardButton]!
+	private(set) var buttons: [KeyboardButton]!
 
 	override init(frame: CGRect) {
+		fnKeys = Array(1...12).map { i in KeyboardButton(title: "F\(i)") }
+
 		super.init(frame: frame)
 
 		translatesAutoresizingMaskIntoConstraints = false
 
+		let backdropView = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
 		backdropView.frame = bounds
 		backdropView.autoresizingMask = [ .flexibleWidth, .flexibleHeight ]
-		backdropView.delegate = self
 		addSubview(backdropView)
 
-		let height = isSmallDevice ? 37 : 45
-		let outerXSpacing = CGFloat(3)
-		let xSpacing = CGFloat(6)
-		let topSpacing = CGFloat(isSmallDevice ? 2 : 3)
-		let bottomSpacing = CGFloat(isSmallDevice ? 3 : 4)
+		let backdropColorView = UIView()
+		backdropColorView.frame = backdropView.contentView.bounds
+		backdropColorView.autoresizingMask = [ .flexibleWidth, .flexibleHeight ]
+		backdropColorView.backgroundColor = .keyboardToolbarBackground
+		backdropView.contentView.addSubview(backdropColorView)
+
+		let buttonSpacing: CGFloat = 6
+		let topSpacing: CGFloat = isSmallDevice ? 3 : 4
+		let rowSpacing: CGFloat = isSmallDevice ? 1 : 2
+
+		let fnStackView = UIStackView(arrangedSubviews: fnKeys + [ UIView() ])
+		fnStackView.translatesAutoresizingMaskIntoConstraints = false
+		fnStackView.axis = .horizontal
+		fnStackView.spacing = buttonSpacing
 
 		let homeEndSpacerView = UIView()
 		let pageUpDownSpacerView = UIView()
-		let deleteSpacerView = UIView()
 
-		homeEndSpacerView.translatesAutoresizingMaskIntoConstraints = false
-		pageUpDownSpacerView.translatesAutoresizingMaskIntoConstraints = false
-		deleteSpacerView.translatesAutoresizingMaskIntoConstraints = false
-
-		homeEndSpacerView.addCompactConstraint("self.width = 0", metrics: nil, views: nil)
-		pageUpDownSpacerView.addCompactConstraint("self.width = 0", metrics: nil, views: nil)
-		deleteSpacerView.addCompactConstraint("self.width <= max", metrics: [
-			"max": CGFloat.greatestFiniteMagnitude
-		], views: nil)
+		let sortedViews = [
+			homeKey, endKey, homeEndSpacerView,
+			pageUpKey, pageDownKey, pageUpDownSpacerView,
+			deleteKey
+		]
 
 		buttons = [
 			homeKey, endKey,
 			pageUpKey, pageDownKey,
-			deleteKey,
-			settingsKey
-		]
+			deleteKey
+		] + fnKeys
 
-		let views = [
-			"homeKey": homeKey,
-			"endKey": endKey,
-			"homeEndSpacerView": homeEndSpacerView,
-			"pageUpKey": pageUpKey,
-			"pageDownKey": pageDownKey,
-			"pageUpDownSpacerView": pageUpDownSpacerView,
-			"deleteKey": deleteKey,
-			"deleteSpacerView": deleteSpacerView,
-			"settingsKey": settingsKey
-		]
+		let bottomStackView = UIStackView(arrangedSubviews: sortedViews)
+		bottomStackView.translatesAutoresizingMaskIntoConstraints = false
+		bottomStackView.axis = .horizontal
+		bottomStackView.spacing = buttonSpacing
 
-		let sortedViews = [
-			homeKey, endKey, pageUpDownSpacerView,
-			pageUpKey, pageDownKey, homeEndSpacerView,
-			deleteKey, deleteSpacerView,
-			settingsKey
-		]
+		let scrollViews = [ fnStackView, bottomStackView ].map { stackView -> UIScrollView in
+			let scrollView = UIScrollView()
+			scrollView.translatesAutoresizingMaskIntoConstraints = false
+			scrollView.showsHorizontalScrollIndicator = false
+			scrollView.showsVerticalScrollIndicator = false
+			scrollView.addSubview(stackView)
 
-		let stackView = UIStackView(arrangedSubviews: sortedViews)
-		stackView.translatesAutoresizingMaskIntoConstraints = false
-		stackView.axis = .horizontal
-		stackView.spacing = xSpacing
-		addSubview(stackView)
+			NSLayoutConstraint.activate([
+				stackView.topAnchor.constraint(equalTo: scrollView.topAnchor, constant: topSpacing),
+				stackView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: -rowSpacing),
+				stackView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor, constant: 3),
+				stackView.trailingAnchor.constraint(lessThanOrEqualTo: scrollView.trailingAnchor, constant: -3),
+				stackView.widthAnchor.constraint(greaterThanOrEqualTo: scrollView.widthAnchor, constant: -6),
+				stackView.heightAnchor.constraint(equalTo: scrollView.heightAnchor, constant: -topSpacing - rowSpacing)
+			])
 
-		let safeArea: String
-		if #available(iOS 11.0, *) {
-			safeArea = "safe"
-		} else {
-			safeArea = "toolbar"
+			return scrollView
 		}
 
-		addCompactConstraints([
-			"self.height = height",
-			"stackView.top = toolbar.top + topSpacing",
-			"stackView.bottom = toolbar.bottom - bottomSpacing",
-			"stackView.left = \(safeArea).left + outerXSpacing",
-			"stackView.right = \(safeArea).right - outerXSpacing"
-		], metrics: [
-			"height": height,
-			"outerXSpacing": outerXSpacing,
-			"topSpacing": topSpacing,
-			"bottomSpacing": bottomSpacing
-		], views: [
-			"toolbar": self,
-			"stackView": stackView
+		let stackView = UIStackView(arrangedSubviews: scrollViews)
+		stackView.translatesAutoresizingMaskIntoConstraints = false
+		stackView.axis = .vertical
+		stackView.spacing = 0
+		addSubview(stackView)
+
+		NSLayoutConstraint.activate([
+			self.heightAnchor.constraint(equalToConstant: isSmallDevice ? 72 : 88),
+
+			stackView.topAnchor.constraint(equalTo: self.topAnchor),
+			stackView.bottomAnchor.constraint(equalTo: self.bottomAnchor),
+			stackView.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor),
+			stackView.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor),
+
+			homeEndSpacerView.widthAnchor.constraint(equalToConstant: 0),
+			pageUpDownSpacerView.widthAnchor.constraint(greaterThanOrEqualToConstant: 0),
+
+			endKey.widthAnchor.constraint(equalTo: homeKey.widthAnchor),
+			pageUpKey.widthAnchor.constraint(equalTo: homeKey.widthAnchor),
+			pageDownKey.widthAnchor.constraint(equalTo: homeKey.widthAnchor),
+			deleteKey.widthAnchor.constraint(equalTo: deleteKey.heightAnchor)
 		])
 
-		stackView.addCompactConstraints([
-			"homeKey.width >= endKey.width",
-			"endKey.width >= homeKey.width",
-			"endKey.width >= pageUpKey.width",
-			"pageUpKey.width >= endKey.width",
-			"pageUpKey.width >= pageDownKey.width",
-			"pageDownKey.width >= pageUpKey.width",
-			"deleteKey.width >= deleteKey.height",
-			"settingsKey.width >= settingsKey.height"
-		], metrics: nil, views: views)
+		// Size the scroll views and F# keys to match each other.
+		NSLayoutConstraint.activate(
+			scrollViews.map { view in view.heightAnchor.constraint(equalTo: scrollViews.first!.heightAnchor) } +
+			fnKeys.map { view in view.widthAnchor.constraint(equalTo: fnKeys.first!.widthAnchor) }
+		)
 
 		NotificationCenter.default.addObserver(self, selector: #selector(self.preferencesUpdated), name: Preferences.didChangeNotification, object: nil)
 		preferencesUpdated()
@@ -145,7 +143,7 @@ class KeyboardPopupToolbar: UIView {
 extension KeyboardPopupToolbar: UIToolbarDelegate {
 
 	func position(for bar: UIBarPositioning) -> UIBarPosition {
-		// helps UIToolbar figure out where to place the shadow line
+		// Helps UIToolbar figure out where to place the shadow line
 		return .bottom
 	}
 
@@ -154,7 +152,7 @@ extension KeyboardPopupToolbar: UIToolbarDelegate {
 extension KeyboardPopupToolbar: UIInputViewAudioFeedback {
 
 	var enableInputClicksWhenVisible: Bool {
-		// conforming to <UIInputViewAudioFeedback> allows the buttons to make the click sound when tapped
+		// Conforming to <UIInputViewAudioFeedback> allows the buttons to make the click sound when tapped
 		return true
 	}
 
